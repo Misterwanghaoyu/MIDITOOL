@@ -2,7 +2,7 @@ import mido
 import requests
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
-
+import time
 # 强行导入后端
 try:
     import mido.backends.rtmidi
@@ -62,6 +62,21 @@ class MIDIApp(tk.Tk):
         self.menu.add_command(label="删除文件", command=self.delete_file)
         self.file_listbox.bind("<Button-3>", self.show_context_menu) # Windows/Linux 右键
 
+        # --- 进度条区 ---
+        self.progress_frame = ttk.Frame(self, padding=10)
+        self.progress_frame.pack(fill="x")
+        
+        self.progress_var = tk.DoubleVar()
+        self.progress_bar = ttk.Progressbar(
+            self.progress_frame, 
+            variable=self.progress_var, 
+            maximum=100
+        )
+        self.progress_bar.pack(fill="x", side="left", expand=True)
+        
+        self.time_label = ttk.Label(self.progress_frame, text="00:00 / 00:00")
+        self.time_label.pack(side="right", padx=5)
+        
         # --- 控制区 ---
         ctrl_frame = ttk.Frame(self, padding=10)
         ctrl_frame.pack(fill="x")
@@ -76,6 +91,30 @@ class MIDIApp(tk.Tk):
         ttk.Button(ctrl_frame, text="删除", command=self.delete_file).pack(side="right", padx=5)
 
     # --- 逻辑功能实现 ---
+
+    def update_progress(self, current, total):
+        """引擎调用的回调函数"""
+        percent = (current / total) * 100
+        self.progress_var.set(percent)
+        
+        # 格式化时间显示
+        curr_str = time.strftime('%M:%S', time.gmtime(current))
+        total_str = time.strftime('%M:%S', time.gmtime(total))
+        self.time_label.config(text=f"{curr_str} / {total_str}")
+        self.update_idletasks() # 强制刷新界面
+
+    def check_and_play(self, play_func, *args, **kwargs):
+        """统一的播放拦截逻辑"""
+        if self.engine.is_playing:
+            # 弹出提示框
+            confirm = messagebox.askyesno("提示", "当前正在播放歌曲，是否停止并切换到新歌曲？")
+            if confirm:
+                self.engine.stop()
+                # 给一点点时间让旧线程退出
+                self.after(200, lambda: play_func(*args, **kwargs))
+            return
+        else:
+            play_func(*args, **kwargs)
 
     def show_context_menu(self, event):
         """显示右键菜单并自动选中行"""
@@ -97,7 +136,12 @@ class MIDIApp(tk.Tk):
         if file_path:
             port = self.port_entry.get()
             # 注意：这里的逻辑需要 midi_engine 支持本地路径
-            self.engine.play_file(file_path, port, is_local=True)
+            # 使用拦截逻辑
+            self.check_and_play(
+                self.engine.play_file, 
+                file_path, port, is_local=True, 
+                progress_callback=self.update_progress
+            )
     
     def upload_file(self):
         """上传本地文件逻辑"""
@@ -192,4 +236,9 @@ class MIDIApp(tk.Tk):
         base_url = self.path_entry.get().rsplit('/', 1)[0] 
         full_url = f"{base_url}/midi_files/{filename}"
         port = self.port_entry.get()
-        self.engine.play_file(full_url, port)
+        # 使用拦截逻辑
+        self.check_and_play(
+            self.engine.play_file, 
+            full_url, port, 
+            progress_callback=self.update_progress
+        )

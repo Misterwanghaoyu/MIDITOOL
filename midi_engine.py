@@ -2,11 +2,13 @@ import mido
 import threading
 import requests 
 import io
+import time
 
 class MIDIEngine:
     def __init__(self):
         self.is_playing = False
         self._stop_event = threading.Event()
+        self.current_thread = None # 记录当前线程
 
     def get_midi_files(self, api_url, search_query=""):
         """从 HTTP 接口获取文件列表"""
@@ -23,39 +25,46 @@ class MIDIEngine:
             print(f"API 获取失败: {e}")
             return []
 
-    def play_file(self, file_url, port_name,is_local=False):
-        """支持从 URL 播放 MIDI"""
+    def play_file(self, file_source, port_name, is_local=False, progress_callback=None):
+        """
+        :param progress_callback: 一个接收 (current_time, total_time) 的函数
+        """
         self._stop_event.clear()
         
         def run():
             try:
-                # 如果是本地文件，直接打开，不走 requests
                 if is_local:
-                    mid = mido.MidiFile(file_url)
+                    mid = mido.MidiFile(file_source)
                 else:
-                    # 1. 获取远程文件数据
-                    resp = requests.get(file_url, timeout=10)
+                    resp = requests.get(file_source, timeout=10)
                     resp.raise_for_status()
-                
-                    # 2. 将二进制数据转为内存流
                     mid_data = io.BytesIO(resp.content)
-                    
-                    # 3. 核心修正：直接传递 mid_data 即可
-                    mid = mido.MidiFile(file=mid_data) 
+                    mid = mido.MidiFile(file=mid_data)
+                
+                total_time = mid.length
+                start_time = time.time()
                 
                 with mido.open_output(port_name) as outport:
                     self.is_playing = True
-                    # 使用 mido 的 play() 方法进行高精度实时播放
+                    # 使用 play() 的同时手动计算进度
                     for msg in mid.play():
                         if self._stop_event.is_set():
                             break
                         outport.send(msg)
                         
+                        # 触发进度回调
+                        if progress_callback:
+                            elapsed = time.time() - start_time
+                            progress_callback(elapsed, total_time)
+                            
             except Exception as e:
                 print(f"播放失败详情: {e}")
             finally:
                 self.is_playing = False
+                if progress_callback: progress_callback(0, 1) # 重置进度条
 
-        threading.Thread(target=run, daemon=True).start()
+        self.current_thread = threading.Thread(target=run, daemon=True)
+        self.current_thread.start()
+
     def stop(self):
         self._stop_event.set()
