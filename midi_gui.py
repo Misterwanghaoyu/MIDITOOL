@@ -67,7 +67,8 @@ class MIDIApp(tk.Tk):
         ctrl_frame.pack(fill="x")
 
         ttk.Button(ctrl_frame, text="刷新列表", command=self.refresh_list).pack(side="left", padx=5)
-        
+        # 在控制区增加“播放本地文件”按钮
+        ttk.Button(ctrl_frame, text="播放本地文件", command=self.play_local_file).pack(side="left", padx=5)
         # 右侧操作组
         ttk.Button(ctrl_frame, text="播放选中", command=self.play_selected).pack(side="right", padx=5)
         ttk.Button(ctrl_frame, text="停止播放", command=self.engine.stop).pack(side="right", padx=5)
@@ -85,6 +86,19 @@ class MIDIApp(tk.Tk):
         except:
             pass
 
+    # --- 新增：播放本地文件的逻辑 ---
+    def play_local_file(self):
+        """弹出对话框选择本地 MIDI 文件并播放"""
+        file_path = filedialog.askopenfilename(
+            title="选择本地 MIDI 文件",
+            filetypes=[("MIDI files", "*.mid;*.midi"), ("All files", "*.*")]
+        )
+        
+        if file_path:
+            port = self.port_entry.get()
+            # 注意：这里的逻辑需要 midi_engine 支持本地路径
+            self.engine.play_file(file_path, port, is_local=True)
+    
     def upload_file(self):
         """上传本地文件逻辑"""
         file_path = filedialog.askopenfilename(filetypes=[("MIDI files", "*.mid;*.midi")])

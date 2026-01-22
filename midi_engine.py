@@ -23,21 +23,25 @@ class MIDIEngine:
             print(f"API 获取失败: {e}")
             return []
 
-    def play_file(self, file_url, port_name):
+    def play_file(self, file_url, port_name,is_local=False):
         """支持从 URL 播放 MIDI"""
         self._stop_event.clear()
         
         def run():
             try:
-                # 1. 获取远程文件数据
-                resp = requests.get(file_url, timeout=10)
-                resp.raise_for_status()
+                # 如果是本地文件，直接打开，不走 requests
+                if is_local:
+                    mid = mido.MidiFile(file_url)
+                else:
+                    # 1. 获取远程文件数据
+                    resp = requests.get(file_url, timeout=10)
+                    resp.raise_for_status()
                 
-                # 2. 将二进制数据转为内存流
-                mid_data = io.BytesIO(resp.content)
-                
-                # 3. 核心修正：直接传递 mid_data 即可
-                mid = mido.MidiFile(file=mid_data) 
+                    # 2. 将二进制数据转为内存流
+                    mid_data = io.BytesIO(resp.content)
+                    
+                    # 3. 核心修正：直接传递 mid_data 即可
+                    mid = mido.MidiFile(file=mid_data) 
                 
                 with mido.open_output(port_name) as outport:
                     self.is_playing = True
