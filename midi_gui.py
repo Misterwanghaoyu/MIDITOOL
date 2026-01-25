@@ -12,12 +12,15 @@ except ImportError:
 class MIDIApp(tk.Tk):
     def __init__(self, engine):
         super().__init__()
+        self.token = None
+        self.show_login_dialog()
         self.engine = engine
         self.title("MIDI 远程控制器 - 增强版")
         self.geometry("700x600")
 
         self.default_port = 'loopMIDI Port 1'
-        self.default_api = 'http://106.52.28.118:5000/midi_files'
+        self.default_api = 'http://127.0.0.1:5000/midi_files'
+        # self.default_api = 'http://106.52.28.118/midi_files'
         
         self._build_ui()
         self.refresh_list()
@@ -32,10 +35,10 @@ class MIDIApp(tk.Tk):
         self.port_entry.insert(0, self.default_port)
         self.port_entry.grid(row=0, column=1, sticky="ew", padx=5)
 
-        ttk.Label(config_frame, text="API 地址:").grid(row=1, column=0, sticky="w")
-        self.path_entry = ttk.Entry(config_frame)
-        self.path_entry.insert(0, self.default_api)
-        self.path_entry.grid(row=1, column=1, sticky="ew", padx=5)
+        # ttk.Label(config_frame, text="API 地址:").grid(row=1, column=0, sticky="w")
+        # self.path_entry = ttk.Entry(config_frame)
+        # self.path_entry.insert(0, self.default_api)
+        # self.path_entry.grid(row=1, column=1, sticky="ew", padx=5)
         
         # 上传按钮
         self.upload_btn = ttk.Button(config_frame, text="上传新MIDI", command=self.upload_file)
@@ -91,6 +94,33 @@ class MIDIApp(tk.Tk):
         ttk.Button(ctrl_frame, text="删除", command=self.delete_file).pack(side="right", padx=5)
 
     # --- 逻辑功能实现 ---
+
+    def auth_headers(self):
+        return {
+            "Authorization": f"Bearer {self.token}"
+        }
+
+    def show_login_dialog(self):
+        pwd = simpledialog.askstring("登录", "请输入管理员密码：", show="*")
+        if not pwd:
+            self.destroy()
+            return
+
+        try:
+            resp = requests.post(
+                f"{self.default_api.rsplit('/',1)[0]}/login",
+                json={"password": pwd},
+                timeout=5
+            )
+            if resp.status_code == 200:
+                self.token = resp.json()["token"]
+                messagebox.showinfo("成功", "登录成功")
+            else:
+                messagebox.showerror("失败", "密码错误")
+                self.destroy()
+        except Exception as e:
+            messagebox.showerror("错误", str(e))
+            self.destroy()
 
     def update_progress(self, current, total):
         """引擎调用的回调函数"""
@@ -149,14 +179,14 @@ class MIDIApp(tk.Tk):
         if not file_path:
             return
         
-        base_api = self.path_entry.get().rsplit('/', 1)[0]
+        base_api = self.default_api.rsplit('/', 1)[0]
         upload_url = f"{base_api}/upload" # 假设后端上传接口
         
         try:
             with open(file_path, 'rb') as f:
                 files = {'file': f}
                 # 发送请求
-                resp = requests.post(upload_url, files=files, timeout=10)
+                resp = requests.post(upload_url, files=files,headers=self.auth_headers(), timeout=10)
                 if resp.status_code == 200:
                     messagebox.showinfo("成功", "文件上传成功")
                     self.refresh_list()
@@ -174,12 +204,12 @@ class MIDIApp(tk.Tk):
         
         new_name = simpledialog.askstring("重命名", f"请输入 '{old_name}' 的新名称:", initialvalue=old_name)
         if new_name and new_name != old_name:
-            base_api = self.path_entry.get().rsplit('/', 1)[0]
+            base_api = self.default_api.rsplit('/', 1)[0]
             rename_url = f"{base_api}/rename"
             
             # 模拟发送请求
             try:
-                resp = requests.post(rename_url, json={"old_name": old_name, "new_name": new_name})
+                resp = requests.post(rename_url, json={"old_name": old_name, "new_name": new_name},headers=self.auth_headers(), timeout=10)
                 if resp.status_code == 200:
                     self.refresh_list()
                 else:
@@ -203,11 +233,11 @@ class MIDIApp(tk.Tk):
                 return
             
             # 2. 发送删除请求
-            base_api = self.path_entry.get().rsplit('/', 1)[0]
+            base_api = self.default_api.rsplit('/', 1)[0]
             delete_url = f"{base_api}/delete"
             
             try:
-                resp = requests.post(delete_url, json={"filename": filename, "password": password})
+                resp = requests.post(delete_url, json={"filename": filename},headers=self.auth_headers())
                 if resp.status_code == 200:
                     messagebox.showinfo("提示", "删除成功")
                     self.refresh_list()
@@ -220,7 +250,7 @@ class MIDIApp(tk.Tk):
 
     # --- 原有逻辑保持不变 ---
     def refresh_list(self):
-        api_url = self.path_entry.get()
+        api_url = self.default_api
         query = self.search_var.get()
         self.file_listbox.delete(0, tk.END)
         files = self.engine.get_midi_files(api_url, query)
@@ -233,7 +263,7 @@ class MIDIApp(tk.Tk):
             messagebox.showwarning("提示", "请先选择一个文件")
             return
         filename = self.file_listbox.get(selection[0])
-        base_url = self.path_entry.get().rsplit('/', 1)[0] 
+        base_url = self.default_api.rsplit('/', 1)[0] 
         full_url = f"{base_url}/midi_files/{filename}"
         port = self.port_entry.get()
         # 使用拦截逻辑
