@@ -13,15 +13,13 @@ class MIDIApp(tk.Tk):
     def __init__(self, engine):
         super().__init__()
         self.token = None
+        self.default_port = 'loopMIDI Port 1'
+        # self.default_api = 'http://127.0.0.1:5000/midi_files'
+        self.default_api = 'http://106.52.28.118/midi_files'
         self.show_login_dialog()
         self.engine = engine
         self.title("MIDI 远程控制器 - 增强版")
         self.geometry("700x600")
-
-        self.default_port = 'loopMIDI Port 1'
-        self.default_api = 'http://127.0.0.1:5000/midi_files'
-        # self.default_api = 'http://106.52.28.118/midi_files'
-        
         self._build_ui()
         self.refresh_list()
 
